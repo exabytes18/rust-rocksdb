@@ -921,6 +921,44 @@ impl<T: ThreadMode, D: DBInner> DBCommon<T, D> {
         self.flush_cf_opt(cf, &FlushOptions::default())
     }
 
+    /// Flushes memtables to disk for the given column families.
+    ///
+    /// If atomic flush is not enabled, this is equivalent to calling flush_cf_opts() multiple
+    /// times.
+    ///
+    /// If atomic flush is enabled, flush_cfs_opts() will flush, up to the latest sequence number at
+    /// the time of the request, all column families specified in the parameters.
+    pub fn flush_cfs_opt<'b, I, W>(&self, cfs: I, flushopts: &FlushOptions) -> Result<(), Error>
+    where
+        I: IntoIterator<Item = &'b W>,
+        W: AsColumnFamilyRef + 'b,
+    {
+        let mut cfhandles: Vec<_> = cfs.into_iter().map(|c| c.inner() as *mut _).collect();
+        unsafe {
+            ffi_try!(ffi::rocksdb_flush_cfs(
+                self.inner.inner(),
+                flushopts.inner,
+                cfhandles.as_mut_ptr(),
+                cfhandles.len() as c_int,
+            ));
+        }
+        Ok(())
+    }
+
+    /// Flushes memtables to disk for the given column families, using default options.
+    ///
+    /// If atomic flush is not enabled, this is equivalent to calling flush_cf() multiple times.
+    ///
+    /// If atomic flush is enabled, flush_cfs() will flush, up to the latest sequence number at the
+    /// time of the request, all column families specified in the parameters.
+    pub fn flush_cfs<'b, I, W>(&self, cfs: I) -> Result<(), Error>
+    where
+        I: IntoIterator<Item = &'b W>,
+        W: AsColumnFamilyRef + 'b,
+    {
+        self.flush_cfs_opt(cfs, &FlushOptions::default())
+    }
+
     /// Return the bytes associated with a key value with read options. If you only intend to use
     /// the vector returned temporarily, consider using [`get_pinned_opt`](#method.get_pinned_opt)
     /// to avoid unnecessary memory copy.
